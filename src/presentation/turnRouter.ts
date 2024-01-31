@@ -1,4 +1,6 @@
-import { TurnService } from "./../application/turnService";
+import { toDisc } from "../domain/model/turn/disc";
+import { Point } from "../domain/model/turn/point";
+import { TurnService } from "./../application/service/turnService";
 import express from "express";
 
 export const turnRouter = express.Router();
@@ -43,11 +45,10 @@ turnRouter.post(
   "/api/games/latest/turns",
   async (req: express.Request<{}, {}, TurnPostRequestBody>, res) => {
     const turnCount = req.body.turnCount;
-    const disc = req.body.move.disc;
-    const x = req.body.move.x;
-    const y = req.body.move.y;
+    const disc = toDisc(req.body.move.disc);
+    const point = new Point(req.body.move.x, req.body.move.y);
 
-    await turnService.registerTurn(turnCount, disc, x, y);
+    await turnService.registerTurn(turnCount, disc, point);
 
     res.status(201).end();
   }
