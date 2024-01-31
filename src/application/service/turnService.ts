@@ -1,11 +1,15 @@
-import { connectMySQL } from "../infrastructure/connection";
-import { GameRepository } from "../domain/game/gameRepository";
-import { toDisc } from "../domain/turn/disc";
-import { Point } from "../domain/turn/point";
-import { TurnRepository } from "../domain/turn/turnRepository";
+import { GameResultRepository } from "./../../domain/model/gameResult/gameResultRepository";
+import { connectMySQL } from "../../infrastructure/connection";
+import { GameRepository } from "../../domain/model/game/gameRepository";
+import { Disc } from "../../domain/model/turn/disc";
+import { Point } from "../../domain/model/turn/point";
+import { TurnRepository } from "../../domain/model/turn/turnRepository";
+import { ApplicationError } from "./error/applicationError";
+import { GameResult } from "../../domain/model/gameResult/gameResult";
 
 const turnRepositry = new TurnRepository();
 const gameRepositry = new GameRepository();
+const gameResultRepository = new GameResultRepository();
 
 class FindLatestGameTurnByTurnCountOutput {
   constructor(
@@ -41,7 +45,10 @@ export class TurnService {
     try {
       const game = await gameRepositry.findLatest(conn);
       if (!game) {
-        throw new Error("Latest game not found");
+        throw new ApplicationError(
+          "LatestGameNotFound",
+          "Latest game not found"
+        );
       }
       if (!game.id) {
         throw new Error("game.id not exist");
@@ -53,26 +60,33 @@ export class TurnService {
         turnCount
       );
 
+      let gameResult: GameResult | undefined;
+      if (turn.gameEnded()) {
+        gameResult = await gameResultRepository.findForGameId(conn, game.id);
+      }
+
       return new FindLatestGameTurnByTurnCountOutput(
         turnCount,
         turn.board.discs,
         turn.nextDisc,
-        // TODO 決着がついている場合、game_resultsテーブルから取得する
-        undefined
+        gameResult?.winnerDisc
       );
     } finally {
       await conn.end();
     }
   }
 
-  async registerTurn(turnCount: number, disc: number, x: number, y: number) {
+  async registerTurn(turnCount: number, disc: Disc, point: Point) {
     const conn = await connectMySQL();
 
     try {
       // 1つ前のターンを取得する
       const game = await gameRepositry.findLatest(conn);
       if (!game) {
-        throw new Error("Latest game not found");
+        throw new ApplicationError(
+          "LatestGameNotFound",
+          "Latest game not found"
+        );
       }
       if (!game.id) {
         throw new Error("game.id not exist");
@@ -86,10 +100,17 @@ export class TurnService {
       );
 
       // 石を置く
-      const newTurn = previousTurn.placeNext(toDisc(disc), new Point(x, y));
+      const newTurn = previousTurn.placeNext(disc, point);
 
       // ターンを保存する
       await turnRepositry.save(conn, newTurn);
+
+      // 勝敗が決した場合、対戦結果を保存
+      if (newTurn.gameEnded()) {
+        const winnerDisc = newTurn.winnerDisc();
+        const gameResult = new GameResult(game.id, winnerDisc, newTurn.endAt);
+        await gameResultRepository.save(conn, gameResult);
+      }
 
       await conn.commit();
     } finally {

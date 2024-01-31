@@ -2,13 +2,24 @@ const EMPTY = 0;
 const DARK = 1;
 const LIGHT = 2;
 
-const boardElement = document.getElementById("board");
+const WINNER_DRAW = 0;
+const WINNER_DARK = 1;
+const WINNER_LIGHT = 2;
 
-async function showBoard(turnCount) {
+const boardElement = document.getElementById("board");
+const nextDiscMessageElement = document.getElementById("next-disc-message");
+const warningMessageElement = document.getElementById("warning-message");
+
+async function showBoard(turnCount, previoisDisc) {
   const response = await fetch(`/api/games/latest/turns/${turnCount}`);
   const responseBody = await response.json();
   const board = responseBody.board;
   const nextDisc = responseBody.nextDisc;
+  const winnerDisc = responseBody.winnerDisc;
+
+  showWarningMessage(previoisDisc, nextDisc, winnerDisc);
+
+  showNextDiscMessage(nextDisc);
 
   while (boardElement.firstChild) {
     boardElement.removeChild(boardElement.firstChild);
@@ -28,14 +39,62 @@ async function showBoard(turnCount) {
       } else {
         squareElement.addEventListener("click", async () => {
           const nextTurnCount = turnCount + 1;
-          await registerTurn(nextTurnCount, nextDisc, x, y);
-          await showBoard(nextTurnCount);
+          const registerTurnResponse = await registerTurn(
+            nextTurnCount,
+            nextDisc,
+            x,
+            y
+          );
+          if (registerTurnResponse.ok) {
+            await showBoard(nextTurnCount, nextDisc);
+          }
         });
       }
 
       boardElement.appendChild(squareElement);
     });
   });
+}
+
+function discToString(disc) {
+  return disc === DARK ? "黒" : "白";
+}
+
+function showWarningMessage(previoisDisc, nextDisc, winnerDisc) {
+  const message = warningMessage(previoisDisc, nextDisc, winnerDisc);
+
+  warningMessageElement.innerText = message;
+
+  if (message === null) {
+    warningMessageElement.style.display = "none";
+  } else {
+    warningMessageElement.style.display = "block";
+  }
+}
+
+function warningMessage(previoisDisc, nextDisc, winnerDisc) {
+  if (nextDisc !== null) {
+    if (previoisDisc === nextDisc) {
+      const skipped = nextDisc === DARK ? LIGHT : DARK;
+      return `${discToString(skipped)}の番はスキップです`;
+    } else {
+      return null;
+    }
+  } else {
+    if (winnerDisc === WINNER_DRAW) {
+      return "引き分けです";
+    } else {
+      return `${discToString(winnerDisc)}の勝ちです`;
+    }
+  }
+}
+
+function showNextDiscMessage(nextDisc) {
+  if (nextDisc) {
+    nextDiscMessageElement.innerText = `次は${discToString(nextDisc)}の番です`;
+  } else {
+    nextDiscMessageElement.innerText = "";
+  }
 }
 
 async function registerGame() {
@@ -54,7 +113,7 @@ async function registerTurn(turnCount, disc, x, y) {
     },
   };
 
-  await fetch("/api/games/latest/turns", {
+  return await fetch("/api/games/latest/turns", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
