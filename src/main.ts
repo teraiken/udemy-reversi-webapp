@@ -1,4 +1,4 @@
-import { ApplicationError } from "./application/service/error/applicationError";
+import { ApplicationError } from "./application/error/applicationError";
 import express from "express";
 import morgan from "morgan";
 import "express-async-errors";
